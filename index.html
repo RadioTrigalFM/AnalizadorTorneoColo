@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -295,6 +295,23 @@
       </div>
     </div>
     <div id="compDetails"></div>
+
+    <div class="card" id="compAnalysisCard" style="display:none;">
+      <h2>Debilidades y resistencias del equipo</h2>
+      <p class="summary-line" id="compAnalysisIntro"></p>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Tipo atacante</th><th>x4</th><th>x2</th><th>x0.5</th><th>x0.25</th><th>Inmunes</th></tr></thead>
+          <tbody id="compAnalysisBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" id="compThreatsCard" style="display:none;">
+      <h2>⚠️ Amenazas para el equipo</h2>
+      <p class="sub" style="margin-top:-6px;">Pokémon de la lista de 33 que golpean de forma súper eficaz (x2 o x4) a <strong>todos</strong> los miembros de tu equipo, sin que ninguno de los tuyos pueda aguantarlos (recibir x1 o menos).</p>
+      <div id="compThreatsBody"></div>
+    </div>
   </section>
 
   <!-- ---------- OPCIONES ---------- -->
@@ -303,8 +320,8 @@
       <h2>Apariencia</h2>
       <div class="segmented" id="themeSeg">
         <button data-theme="light">☀️ Claro</button>
-        <button data-theme="dark">🌙 Oscuro</button>
-        <button data-theme="auto" class="active">🌓 Auto</button>
+        <button data-theme="dark" class="active">🌙 Oscuro</button>
+        <button data-theme="auto">🌓 Auto</button>
       </div>
     </div>
     <div class="card">
@@ -536,8 +553,8 @@ function applyTheme(mode){
   try { localStorage.setItem('pokedexTheme', mode); } catch(e){}
 }
 themeSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { Sound.toggle(); applyTheme(b.dataset.theme); }));
-let savedTheme = 'auto';
-try { savedTheme = localStorage.getItem('pokedexTheme') || 'auto'; } catch(e){}
+let savedTheme = 'dark';
+try { savedTheme = localStorage.getItem('pokedexTheme') || 'dark'; } catch(e){}
 applyTheme(savedTheme);
 
 const soundSeg = document.getElementById('soundSeg');
@@ -577,6 +594,11 @@ const compClearBtn = document.getElementById('compClearBtn');
 const compChips = document.getElementById('compChips');
 const compCounter = document.getElementById('compCounter');
 const compDetails = document.getElementById('compDetails');
+const compAnalysisCard = document.getElementById('compAnalysisCard');
+const compAnalysisBody = document.getElementById('compAnalysisBody');
+const compAnalysisIntro = document.getElementById('compAnalysisIntro');
+const compThreatsCard = document.getElementById('compThreatsCard');
+const compThreatsBody = document.getElementById('compThreatsBody');
 
 const optClearTeamBtn = document.getElementById('optClearTeamBtn');
 const optClearCompBtn = document.getElementById('optClearCompBtn');
@@ -839,7 +861,11 @@ function renderComp(){
   }
 
   compDetails.innerHTML = '';
-  if (compTeam.length === 0) return;
+  if (compTeam.length === 0){
+    compAnalysisCard.style.display = 'none';
+    compThreatsCard.style.display = 'none';
+    return;
+  }
 
   compTeam.forEach(p => {
     const box = document.createElement('div');
@@ -879,6 +905,80 @@ function renderComp(){
     box.innerHTML = html;
     compDetails.appendChild(box);
   });
+
+  // ---------- Tabla agregada: debilidades/resistencias del equipo completo ----------
+  const compRows = TYPES.map(atk => {
+    let x4=0,x2=0,x05=0,x025=0,x0=0;
+    compTeam.forEach(p => {
+      const m = multiplier(atk, p.types);
+      if (m === 4) x4++;
+      else if (m === 2) x2++;
+      else if (m === 0.5) x05++;
+      else if (m === 0.25) x025++;
+      else if (m === 0) x0++;
+    });
+    return { atk, x4, x2, x05, x025, x0, danger: x4*2 + x2 };
+  }).filter(r => r.x4+r.x2+r.x05+r.x025+r.x0 > 0)
+    .sort((a,b) => b.danger - a.danger);
+
+  compAnalysisBody.innerHTML = '';
+  compRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><strong>' + TYPES_ES[r.atk] + '</strong></td>' +
+      '<td>' + (r.x4 ? '<span class="tag x4">'+r.x4+'</span>' : '—') + '</td>' +
+      '<td>' + (r.x2 ? '<span class="tag x2">'+r.x2+'</span>' : '—') + '</td>' +
+      '<td>' + (r.x05 ? '<span class="tag x05">'+r.x05+'</span>' : '—') + '</td>' +
+      '<td>' + (r.x025 ? '<span class="tag x025">'+r.x025+'</span>' : '—') + '</td>' +
+      '<td>' + (r.x0 ? '<span class="tag x0">'+r.x0+'</span>' : '—') + '</td>';
+    compAnalysisBody.appendChild(tr);
+  });
+
+  if (compRows.length && compRows[0].danger > 0){
+    const top = compRows[0];
+    const totalWeak = top.x4 + top.x2;
+    let detail = [];
+    if (top.x2) detail.push(top.x2 + ' con debilidad x2');
+    if (top.x4) detail.push(top.x4 + ' con debilidad x4');
+    compAnalysisIntro.textContent = 'El tipo más problemático para tu equipo es ' + TYPES_ES[top.atk] +
+      ': hay ' + totalWeak + ' Pokémon del equipo débiles a este tipo (' + detail.join(' y ') + ').';
+  } else {
+    compAnalysisIntro.textContent = 'Tu equipo no tiene debilidades destacadas frente a ningún tipo.';
+  }
+  compAnalysisCard.style.display = 'block';
+
+  // ---------- Amenazas: Pokémon que golpean muy eficaz a TODO el equipo sin que nadie los aguante ----------
+  const threats = [];
+  POKEMON.forEach(([n, t]) => {
+    if (compTeam.some(p => p.name === n)) return;
+    const perMember = compTeam.map(p => Math.max(...t.map(myT => multiplier(myT, p.types))));
+    const isThreat = perMember.every(m => m > 1);
+    if (!isThreat) return;
+    threats.push({ name: n, types: t, worst: Math.min(...perMember), best: Math.max(...perMember) });
+  });
+  threats.sort((a,b) => b.best - a.best || b.worst - a.worst);
+
+  compThreatsBody.innerHTML = '';
+  if (threats.length === 0){
+    compThreatsBody.innerHTML = '<div class="empty">' +
+      (compTeam.length === 1
+        ? 'Ningún Pokémon de la lista golpea de forma súper eficaz a tu único miembro sin que él pueda aguantarlo.'
+        : 'Tu equipo se cubre entre sí: ningún Pokémon de la lista golpea de forma súper eficaz a todos tus miembros a la vez.') +
+      '</div>';
+  } else {
+    threats.forEach(th => {
+      const row = document.createElement('div');
+      row.className = 'chip';
+      row.style.cssText = 'width:100%;justify-content:space-between;box-sizing:border-box;margin-bottom:6px;';
+      const typesLabel = th.types.map(t => TYPES_ES[t]).join('/');
+      const multLabel = th.worst === th.best ? ('x' + th.worst) : ('x' + th.worst + '–x' + th.best);
+      row.innerHTML = avatarHTML(th.name, th.types, 24) +
+        '<span style="flex:1;margin-left:8px;">' + th.name + ' <span class="types">(' + typesLabel + ')</span></span>' +
+        '<span class="tag ' + (th.best === 4 ? 'x4' : 'x2') + '">' + multLabel + '</span>';
+      compThreatsBody.appendChild(row);
+    });
+  }
+  compThreatsCard.style.display = 'block';
 }
 renderComp();
 
